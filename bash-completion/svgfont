@@ -1,0 +1,44 @@
+# bash completion for svgfont
+# Author: Lenik <svgfont@bodz.net>
+# License: GPL
+# Year: 2026
+
+_svgfont()
+{
+    local cur prev words cword
+    _init_completion || return
+
+    case "$prev" in
+        -a|--add)
+            _filedir
+            return
+            ;;
+        -o|--outdir)
+            _filedir -d
+            return
+            ;;
+        -u|--extract)
+            _filedir '@(svg|SVG)'
+            return
+            ;;
+    esac
+
+    if [[ "$cur" == -* ]]; then
+        COMPREPLY=($(compgen -W '-u --extract -a --add -o --outdir -v --verbose -q --quiet -h --help' -- "$cur"))
+    else
+        case "${words[1]}" in
+            -u|--extract)
+                _filedir '@(svg|SVG)'
+                ;;
+            -a|--add)
+                _filedir '@(svg|SVG)'
+                ;;
+            *)
+                _filedir '@(svg|SVG)'
+                ;;
+        esac
+    fi
+}
+
+complete -F _svgfont svgfont
+

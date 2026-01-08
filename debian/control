@@ -1,0 +1,16 @@
+Source: svgfont
+Section: graphics
+Priority: optional
+Maintainer: Lenik <svgfont@bodz.net>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+Rules-Requires-Root: no
+
+Package: svgfont
+Architecture: all
+Depends: ${misc:Depends}, python3, bash-completion
+Description: Extract and add glyphs to SVG font files
+ svgfont is a utility for working with SVG font files. It can extract
+ glyphs from an SVG font file into individual SVG files, or add SVG files
+ as glyphs to an existing SVG font file.
+

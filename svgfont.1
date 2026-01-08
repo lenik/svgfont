@@ -1,0 +1,65 @@
+.TH SVGFONT 1 "2026" "svgfont" "User Commands"
+.SH NAME
+svgfont \- Extract and add glyphs to SVG font files
+.SH SYNOPSIS
+.B svgfont
+[\fIOPTIONS\fR] \fB\-u\fR \fISVGFILE\fR
+.br
+.B svgfont
+[\fIOPTIONS\fR] \fB\-a\fR \fIFONTSVG\fR \fISVGFILE\fR...
+.SH DESCRIPTION
+\fBsvgfont\fR is a utility for working with SVG font files. It can extract
+glyphs from an SVG font file into individual SVG files, or add SVG files as
+glyphs to an existing SVG font file.
+.SH OPTIONS
+.TP
+\fB\-u\fR, \fB\-\-extract\fR
+Extract font glyphs from an SVG font file. The glyphs will be saved as
+individual SVG files in an output directory.
+.TP
+\fB\-a\fR, \fB\-\-add\fR \fIFONTSVG\fR
+Add SVG files as font glyphs to the font SVG file specified by \fIFONTSVG\fR.
+The glyph name is derived from the filename (without extension).
+.TP
+\fB\-o\fR, \fB\-\-outdir\fR \fIDIR\fR
+Specify the output directory for extracted glyphs. If not specified, the
+default is a directory beside the SVG file (e.g., \fIfoo/bar.svg\fR will
+extract to \fIfoo/bar/\fR).
+.TP
+\fB\-v\fR, \fB\-\-verbose\fR
+Enable verbose mode, showing debug messages.
+.TP
+\fB\-q\fR, \fB\-\-quiet\fR
+Enable quiet mode, only showing error messages.
+.TP
+\fB\-h\fR, \fB\-\-help\fR
+Show help message and exit.
+.SH EXAMPLES
+Extract all glyphs from a font file:
+.RS
+.B svgfont -u materialdesignicons-webfont.svg
+.RE
+.PP
+Extract glyphs to a specific directory:
+.RS
+.B svgfont -u font.svg -o output/
+.RE
+.PP
+Add SVG files as glyphs to a font file:
+.RS
+.B svgfont -a font.svg icon1.svg icon2.svg icon3.svg
+.RE
+.PP
+Extract with verbose output:
+.RS
+.B svgfont -v -u font.svg
+.RE
+.SH AUTHOR
+Lenik <svgfont@bodz.net>
+.SH LICENSE
+Copyright (c) 2026 Lenik
+.PP
+Licensed under the GNU General Public License, version 3 or later.
+.SH SEE ALSO
+.BR svg2assets (1)
+

@@ -1,0 +1,356 @@
+#!/usr/bin/env python3
+"""
+svgfont - Extract and add glyphs to SVG font files
+
+Usage:
+    svgfont -u SVGFILE              Extract font glyphs from SVG font file
+    svgfont -a FONTSVG SVGFILE...   Add SVG files as font glyphs to the font SVG file
+
+Author: Lenik <svgfont@bodz.net>
+License: GPL
+Year: 2026
+"""
+
+import sys
+import argparse
+import xml.etree.ElementTree as ET
+from pathlib import Path
+import re
+import logging
+
+
+def setup_logging(verbose=False, quiet=False):
+    """Setup logging based on verbosity level."""
+    if quiet:
+        level = logging.ERROR
+    elif verbose:
+        level = logging.DEBUG
+    else:
+        level = logging.INFO
+    
+    logging.basicConfig(
+        level=level,
+        format='%(message)s',
+        stream=sys.stderr
+    )
+    return logging.getLogger(__name__)
+
+
+def extract_glyphs(svg_file, outdir=None, logger=None):
+    """Extract glyphs from an SVG font file."""
+    if logger is None:
+        logger = logging.getLogger(__name__)
+    
+    try:
+        logger.debug(f"Parsing SVG file: {svg_file}")
+        tree = ET.parse(svg_file)
+        root = tree.getroot()
+    except ET.ParseError as e:
+        logger.error(f"Error parsing SVG file: {e}")
+        return 1
+    except FileNotFoundError:
+        logger.error(f"File not found: {svg_file}")
+        return 1
+    
+    # Find the font element (handle both namespaced and non-namespaced)
+    ns = {'svg': 'http://www.w3.org/2000/svg'}
+    font = root.find('.//font')
+    use_namespace = False
+    if font is None:
+        # Try with namespace
+        font = root.find('.//svg:font', ns)
+        use_namespace = True
+        if font is None:
+            logger.error("Error: No font element found in SVG file")
+            return 1
+    
+    # Get font metadata
+    if use_namespace:
+        font_face = font.find('svg:font-face', ns)
+        if font_face is None:
+            font_face = font.find('.//svg:font-face', ns)
+    else:
+        font_face = font.find('font-face')
+        if font_face is None:
+            font_face = font.find('.//font-face')
+    units_per_em = font_face.get('units-per-em', '512') if font_face is not None else '512'
+    logger.debug(f"Font units-per-em: {units_per_em}")
+    
+    # Extract all glyphs
+    if use_namespace:
+        glyphs = font.findall('svg:glyph', ns)
+    else:
+        glyphs = font.findall('glyph')
+    logger.debug(f"Found {len(glyphs)} glyph elements")
+    
+    if not glyphs:
+        logger.error("No glyphs found in font file")
+        return 1
+    
+    # Determine output directory
+    if outdir is None:
+        # Default: directory beside the SVG file (foo/bar.svg -> foo/bar/)
+        svg_path = Path(svg_file)
+        output_dir = svg_path.parent / svg_path.stem
+    else:
+        output_dir = Path(outdir)
+    
+    logger.debug(f"Output directory: {output_dir}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    logger.info(f"Extracting {len(glyphs)} glyphs to {output_dir}/...")
+    
+    extracted_count = 0
+    for glyph in glyphs:
+        glyph_name = glyph.get('glyph-name')
+        if not glyph_name:
+            logger.debug("Skipping glyph without glyph-name")
+            continue
+        
+        path_data = glyph.get('d', '')
+        if not path_data:
+            logger.debug(f"Skipping glyph '{glyph_name}' without path data")
+            continue
+        
+        # Create a standalone SVG for this glyph
+        svg_content = f'''<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {units_per_em} {units_per_em}">
+  <path d="{path_data}"/>
+</svg>
+'''
+        
+        output_file = output_dir / f"{glyph_name}.svg"
+        output_file.write_text(svg_content)
+        logger.info(f"  Extracted: {glyph_name}.svg")
+        extracted_count += 1
+    
+    logger.info(f"Done! Extracted {extracted_count} glyphs to {output_dir}/")
+    return 0
+
+
+def add_glyphs(font_svg, svg_files, logger=None):
+    """Add SVG files as glyphs to the font SVG file."""
+    if logger is None:
+        logger = logging.getLogger(__name__)
+    
+    # Parse the font SVG file
+    try:
+        logger.debug(f"Parsing font SVG file: {font_svg}")
+        tree = ET.parse(font_svg)
+        root = tree.getroot()
+    except ET.ParseError as e:
+        logger.error(f"Error parsing font SVG file: {e}")
+        return 1
+    except FileNotFoundError:
+        logger.error(f"Font file not found: {font_svg}")
+        return 1
+    
+    # Find or create the defs element
+    defs = root.find('defs')
+    if defs is None:
+        # Try with namespace
+        ns = {'svg': 'http://www.w3.org/2000/svg'}
+        defs = root.find('.//svg:defs', ns)
+        if defs is None:
+            logger.debug("Creating defs element")
+            defs = ET.SubElement(root, 'defs')
+    
+    # Find or create the font element
+    font = defs.find('font')
+    if font is None:
+        font = defs.find('.//font')
+    if font is None:
+        # Create a new font element
+        logger.debug("Creating new font element")
+        font = ET.SubElement(defs, 'font')
+        font.set('id', 'Custom Font')
+        font.set('horiz-adv-x', '24')
+        
+        # Create font-face
+        font_face = ET.SubElement(font, 'font-face')
+        font_face.set('font-family', 'Custom Font')
+        font_face.set('units-per-em', '512')
+        font_face.set('ascent', '448')
+        font_face.set('descent', '64')
+        
+        # Create missing-glyph
+        missing_glyph = ET.SubElement(font, 'missing-glyph')
+        missing_glyph.set('horiz-adv-x', '0')
+    
+    # Get existing glyph names to avoid duplicates
+    existing_glyphs = {}
+    for glyph in font.findall('glyph'):
+        glyph_name = glyph.get('glyph-name')
+        if glyph_name:
+            existing_glyphs[glyph_name] = glyph
+    
+    logger.debug(f"Found {len(existing_glyphs)} existing glyphs")
+    
+    # Get font metadata
+    font_face = font.find('font-face')
+    if font_face is None:
+        font_face = font.find('.//font-face')
+    units_per_em = font_face.get('units-per-em', '512') if font_face is not None else '512'
+    logger.debug(f"Font units-per-em: {units_per_em}")
+    
+    added_count = 0
+    skipped_count = 0
+    
+    for svg_file in svg_files:
+        logger.debug(f"Processing: {svg_file}")
+        svg_path = Path(svg_file)
+        if not svg_path.exists():
+            logger.warning(f"File not found: {svg_file}")
+            skipped_count += 1
+            continue
+        
+        # Extract glyph name from filename (without extension)
+        glyph_name = svg_path.stem
+        
+        # Check if glyph already exists
+        if glyph_name in existing_glyphs:
+            logger.info(f"  Skipping {glyph_name}.svg (already exists)")
+            skipped_count += 1
+            continue
+        
+        # Parse the input SVG file
+        try:
+            input_tree = ET.parse(svg_file)
+            input_root = input_tree.getroot()
+        except ET.ParseError as e:
+            logger.warning(f"Error parsing {svg_file}: {e}")
+            skipped_count += 1
+            continue
+        
+        # Extract path data from the SVG
+        # Look for path elements (handle both namespaced and non-namespaced)
+        paths = input_root.findall('.//path')
+        if not paths:
+            # Try with namespace
+            ns = {'svg': 'http://www.w3.org/2000/svg'}
+            paths = input_root.findall('.//svg:path', ns)
+        
+        if not paths:
+            logger.warning(f"No path elements found in {svg_file}")
+            skipped_count += 1
+            continue
+        
+        # Combine all paths into one
+        combined_path = ' '.join(path.get('d', '') for path in paths if path.get('d'))
+        
+        if not combined_path:
+            logger.warning(f"No path data found in {svg_file}")
+            skipped_count += 1
+            continue
+        
+        # Get viewBox or dimensions from input SVG
+        viewbox = input_root.get('viewBox')
+        if not viewbox:
+            width = input_root.get('width', units_per_em)
+            height = input_root.get('height', units_per_em)
+            # Try to extract numeric values
+            width = re.sub(r'[^\d.]', '', str(width)) or units_per_em
+            height = re.sub(r'[^\d.]', '', str(height)) or units_per_em
+        else:
+            # Extract width and height from viewBox
+            parts = viewbox.split()
+            if len(parts) >= 4:
+                width = parts[2]
+                height = parts[3]
+            else:
+                width = height = units_per_em
+        
+        # Calculate horizontal advance (use width or default)
+        try:
+            horiz_adv_x = str(int(float(width)))
+        except (ValueError, TypeError):
+            horiz_adv_x = units_per_em
+        
+        logger.debug(f"Adding glyph '{glyph_name}' with horiz-adv-x={horiz_adv_x}")
+        
+        # Create glyph element
+        glyph = ET.SubElement(font, 'glyph')
+        glyph.set('glyph-name', glyph_name)
+        glyph.set('unicode', f'&#x{ord(glyph_name[0]):04X};' if glyph_name else '')
+        glyph.set('horiz-adv-x', horiz_adv_x)
+        glyph.set('d', combined_path)
+        
+        existing_glyphs[glyph_name] = glyph
+        added_count += 1
+        logger.info(f"  Added: {glyph_name}")
+    
+    # Write the updated font file
+    try:
+        logger.debug(f"Writing updated font file: {font_svg}")
+        # Format the XML nicely (ET.indent is available in Python 3.9+)
+        try:
+            ET.indent(tree, space='  ')
+        except AttributeError:
+            # Python < 3.9 doesn't have ET.indent
+            pass
+        tree.write(font_svg, encoding='utf-8', xml_declaration=True)
+        logger.info(f"\nDone! Added {added_count} glyph(s), skipped {skipped_count}")
+        logger.info(f"Font file updated: {font_svg}")
+    except Exception as e:
+        logger.error(f"Error writing font file: {e}")
+        return 1
+    
+    return 0
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Extract and add glyphs to SVG font files',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  svgfont -u materialdesignicons-webfont.svg
+    Extract all glyphs from the font file
+
+  svgfont -a font.svg icon1.svg icon2.svg icon3.svg
+    Add icon1.svg, icon2.svg, and icon3.svg as glyphs to font.svg
+        '''
+    )
+    
+    parser.add_argument('-u', '--extract', action='store_true',
+                       help='Extract font glyphs from SVG font file')
+    parser.add_argument('-a', '--add', metavar='FONTSVG',
+                       help='Add SVG files as font glyphs to the font SVG file')
+    parser.add_argument('-o', '--outdir', metavar='DIR',
+                       help='Output directory for extracted glyphs (default: directory beside the SVG file)')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                       help='Verbose mode (show debug messages)')
+    parser.add_argument('-q', '--quiet', action='store_true',
+                       help='Quiet mode (only show errors)')
+    
+    args, remaining = parser.parse_known_args()
+    
+    # Setup logging
+    logger = setup_logging(verbose=args.verbose, quiet=args.quiet)
+    
+    if args.extract:
+        if not remaining:
+            logger.error("SVG font file required for extraction")
+            parser.print_help()
+            return 1
+        if len(remaining) > 1:
+            logger.error("Only one SVG font file can be extracted at a time")
+            return 1
+        return extract_glyphs(remaining[0], args.outdir, logger)
+    
+    elif args.add:
+        if not remaining:
+            logger.error("At least one SVG file required to add")
+            parser.print_help()
+            return 1
+        return add_glyphs(args.add, remaining, logger)
+    
+    else:
+        parser.print_help()
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+

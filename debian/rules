@@ -1,0 +1,13 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_install:
+	install -d $(CURDIR)/debian/svgfont/usr/bin
+	install -m 755 svgfont $(CURDIR)/debian/svgfont/usr/bin/
+	install -d $(CURDIR)/debian/svgfont/usr/share/man/man1
+	install -m 644 svgfont.1 $(CURDIR)/debian/svgfont/usr/share/man/man1/
+	install -d $(CURDIR)/debian/svgfont/usr/share/bash-completion/completions
+	install -m 644 bash-completion/svgfont $(CURDIR)/debian/svgfont/usr/share/bash-completion/completions/
+
